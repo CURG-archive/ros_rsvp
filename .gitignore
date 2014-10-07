@@ -1,0 +1,6 @@
+.svn
+*.swp
+*.pyc
+*.out
+.idea
+build
