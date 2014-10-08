@@ -44,21 +44,30 @@ class RSVPDisplay(object):
         self.reset()
 
     def rank_image_cb(self, msg):
+        print(
+            'Received message with {} compressed_imgs, {} imgs, {} strs'.format(len(msg.compressed_imgs), len(msg.imgs),
+                                                                                len(msg.strs)))
+        if self.trial and not self.trial.mode in (Trial.State.ABORTED, Trial.State.COMPLETED):
+            print('Aborting due to ongoing trial')
+            self.action_server.set_aborted()
+            return
+
         self.reset()
 
-        if len(msg.imgs) > 0:
+        if len(msg.compressed_imgs) > 0:
             self.screen.fill((255, 255, 255))
             self.screen.blit(self.font.render(
-                'Received {} images'.format(len(msg.imgs)), 1, (0, 0, 0)), (40, self.size[1] / 2))
+                'Received {} images'.format(len(msg.compressed_imgs)), 1, (0, 0, 0)), (40, self.size[1] / 2))
             pygame.display.flip()
 
             scaled_imgs = [ImageConverter.from_ros(img) for img in msg.compressed_imgs]
 
-            self.trial = Trial(scaled_imgs, size=self.size, preview_time=1000, image_time=self.PRESENTATION_DELAY)
+            self.trial = Trial(zip(msg.option_ids, scaled_imgs), size=self.size, preview_time=2500,
+                               image_time=self.PRESENTATION_DELAY)
 
             self.ranking = True
 
-            self.bci and self.bci.beginBlock()
+            self.bci and self.bci.begin_block()
 
             pygame.time.set_timer(self.EVENT_ID, self.trial.show_next_image(self.screen, self.bci))
             pygame.display.flip()
@@ -71,6 +80,8 @@ class RSVPDisplay(object):
     def reset(self):
         self.ranking = False
         self.screen.fill((0, 0, 0))
+        self.trial = None
+
         if self.bci and self.bci.in_block:
             self.bci.endBlock()
         pygame.time.set_timer(self.EVENT_ID, 0)
@@ -97,10 +108,18 @@ class RSVPDisplay(object):
 
                         if self.trial.mode == Trial.State.COMPLETED:
                             print('Trial completed')
-                            self.action_server.set_succeeded()
                             self.ranking = False
+                            self.bci and self.bci.end_block()
+
+                            results = self.trial.process_results(self.screen, self.bci)
+                            print('Results of trial: {}'.format(results))
+                            self.action_server.set_succeeded(results)
+                            pygame.display.flip()
+                            self.trial = None
                         elif self.trial.mode == Trial.State.ABORTED:
                             print('Trial aborted')
                             self.action_server.set_aborted()
                             self.ranking = False
+                            self.trial = None
+                            self.bci and self.bci.end_block()
                             self.reset()

@@ -1,8 +1,10 @@
+from __future__ import print_function
 __author__ = 'rbtying'
 
 import parallel  # parallel port interface
 from socket import socket
 import time
+import random
 
 
 class BCIEngine(object):
@@ -182,12 +184,32 @@ class BCIEngine(object):
 
     def close(self):
         self.reset()
-        self.endSession()
+        self.end_session()
         self.sock.send(self.STOP)
         self.sock.close()
 
 
 class BlockResult(object):
+
+    @classmethod
+    def random_blocks(cls, block_id, option_counts, index_list):
+        rand_opt = list(enumerate(option_counts))
+        random.shuffle(rand_opt)
+
+        index_lut = [[] for _ in range(len(option_counts))]
+        for (i, idx) in enumerate(index_list):
+            index_lut[idx].append(i)
+
+        eegs = list(sorted([random.gauss(1.0e-9, 1.0e-10) for _ in range(len(index_list))]))
+        for i in range(rand_opt[0][1]):
+            eegs[-i-1] = 1.0e-11
+
+        output = []
+        for (idx, counts) in rand_opt:
+            for j in range(counts):
+                output.append(BlockResult(block_id, index_lut[idx].pop() + 1, eegs.pop(), len(index_list) - len(eegs)))
+        return output
+
     def __init__(self, block_id, image_id, eeg, sort_position):
         self.block_id = block_id
         self.image_id = image_id
