@@ -30,7 +30,7 @@ def main_function():
 
     args = parser.parse_args(sys.argv[1:])
 
-    for var in ('ROS_MASTER_URI', 'ROS_IP', 'ROS_PACKAGE_PATH'):
+    for var in ('ROS_MASTER_URI', 'ROS_HOSTNAME', 'ROS_PACKAGE_PATH'):
         if not var in os.environ:
             print >>sys.stderr, '{} not set in environment!'.format(var)
 
@@ -49,13 +49,13 @@ def main_function():
     if r.bci:
         print 'entering testing mode'
         time.sleep(10)
-        r.bci.startTestingSession('_cbci_735866.6621')
+        r.bci.start_testing_session('_cbci_735941.5806')
 
     try:
         r.do_loop()
     finally:
         print 'ending session'
-        r.bci and r.bci.endSession()
+        r.bci and r.bci.end_session()
 
     print 'shutting down'
     rospy.signal_shutdown('Exiting program')

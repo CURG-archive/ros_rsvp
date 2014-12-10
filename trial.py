@@ -58,6 +58,7 @@ class Trial(object):
         (229, 218, 57), (43, 51, 38), (16, 64, 29), (35, 140, 133), (38, 48, 77), (157, 61, 242), (115, 0, 92),
         (51, 0, 20)
     ]
+    BG_COLORS = [(0,0,0) for i in range(20)]
 
     def __init__(self, options, size=(640, 480), preview_time=1000.0, image_time=100, min_repeat=2, max_repeat=5):
         """
@@ -86,6 +87,13 @@ class Trial(object):
         self.selected_index_ptr = None
 
         self.results = None
+
+    def reset(self):
+        self.mode = Trial.State.INIT
+        self.index_ptr = 0
+        self.selected_index_ptr = None
+        self.results = None
+        return self.preview_time
 
     def show_next_image(self, screen, bci=None):
         """
@@ -141,7 +149,7 @@ class Trial(object):
             option_results[option_idx].sort_positions.append(result.sort_position)
             eegs.append(result.eeg)
 
-        option_results = sorted(option_results, key=lambda x: x.average_eeg)
+        option_results = sorted(option_results, key=lambda x: -x.average_eeg)
 
         overall_eeg_med = np.median(eegs)
         overall_eeg_std = np.std(eegs)
@@ -150,12 +158,28 @@ class Trial(object):
             return (overall_eeg_med - v) / overall_eeg_std
 
         def percentage_correct(r):
-            num_correct = sum(1 if abs(z(eeg)) > 1 else 0 for eeg in r.eegs)
+            num_correct = sum(1 if abs(z(eeg)) > 0.5 else 0 for eeg in r.eegs)
             return num_correct * 1.0 / r.expected_counts
 
         result = RankResult()
         result.option_ids = [res.idx for res in option_results]
         result.confidences = [z(res.average_eeg) * percentage_correct(res) for res in option_results]
+
+        best_option = result.confidences[0]
+        avg_of_other_options = np.mean(result.confidences[1:])
+        std_of_other_options = np.std(result.confidences[1:])
+
+        # print([res.average_eeg for res in option_results])
+        # print(result.confidences)
+        # print(('Best option', best_option))
+        # print(('avg, std', avg_of_other_options, std_of_other_options))
+
+        print(result, best_option, avg_of_other_options, std_of_other_options,
+              abs(best_option - avg_of_other_options) / std_of_other_options,
+              abs(std_of_other_options / overall_eeg_std))
+
+        if (abs(best_option - avg_of_other_options) / std_of_other_options) < 2: #  or abs(std_of_other_options / overall_eeg_std) > 0.9:
+            raise RuntimeError('not a good result')
 
         # display best option
         im_idx = -1
@@ -163,7 +187,6 @@ class Trial(object):
             if opt[0] == result.option_ids[0]:
                 im_idx = idx
                 break
-        print(im_idx)
 
         if im_idx >= 0:
             screen.fill(self.BG_COLORS[im_idx])

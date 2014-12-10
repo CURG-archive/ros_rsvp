@@ -13,7 +13,7 @@ import actionlib
 
 
 class RSVPDisplay(object):
-    PRESENTATION_FREQUENCY = 5
+    PRESENTATION_FREQUENCY = 4
     PRESENTATION_DELAY = int(1000.0 / PRESENTATION_FREQUENCY + 0.5)
     FRAMERATE = 60
 
@@ -61,8 +61,9 @@ class RSVPDisplay(object):
             pygame.display.flip()
 
             scaled_imgs = [ImageConverter.from_ros(img) for img in msg.compressed_imgs]
+            scaled_imgs = [pygame.transform.scale(img, self.size) for img in scaled_imgs]
 
-            self.trial = Trial(zip(msg.option_ids, scaled_imgs), size=self.size, preview_time=2500,
+            self.trial = Trial(zip(msg.option_ids, scaled_imgs), size=self.size, preview_time=5000,
                                image_time=self.PRESENTATION_DELAY)
 
             self.ranking = True
@@ -83,7 +84,7 @@ class RSVPDisplay(object):
         self.trial = None
 
         if self.bci and self.bci.in_block:
-            self.bci.endBlock()
+            self.bci.end_block()
         pygame.time.set_timer(self.EVENT_ID, 0)
 
         reset_str = 'BCI Reset' if self.bci else 'SIMULATION MODE'
@@ -107,15 +108,21 @@ class RSVPDisplay(object):
                         pygame.display.flip()
 
                         if self.trial.mode == Trial.State.COMPLETED:
-                            print('Trial completed')
-                            self.ranking = False
                             self.bci and self.bci.end_block()
 
-                            results = self.trial.process_results(self.screen, self.bci)
-                            print('Results of trial: {}'.format(results))
-                            self.action_server.set_succeeded(results)
-                            pygame.display.flip()
-                            self.trial = None
+                            try:
+                                print('Trial completed')
+                                results = self.trial.process_results(self.screen, self.bci)
+                                print('Results of trial: {}'.format(results))
+                                self.action_server.set_succeeded(results)
+                                pygame.display.flip()
+                                self.trial = None
+                                self.ranking = False
+                            except RuntimeError:
+                                print('Trial insufficient, rescheduling')
+                                self.bci and self.bci.begin_block()
+                                pygame.time.set_timer(self.EVENT_ID, self.trial.reset())
+                                pygame.display.flip()
                         elif self.trial.mode == Trial.State.ABORTED:
                             print('Trial aborted')
                             self.action_server.set_aborted()

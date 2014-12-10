@@ -201,8 +201,13 @@ class BlockResult(object):
             index_lut[idx].append(i)
 
         eegs = list(sorted([random.gauss(1.0e-9, 1.0e-10) for _ in range(len(index_list))]))
-        for i in range(rand_opt[0][1]):
-            eegs[-i-1] = 1.0e-11
+
+        if random.random() > 0.5:
+            print('Generating random blocks with known success')
+            for i in range(rand_opt[0][1]):
+                eegs[-i-1] = 1.0e-6
+        else:
+            print('Generating random blocks without known success')
 
         output = []
         for (idx, counts) in rand_opt:
