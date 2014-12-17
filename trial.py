@@ -203,7 +203,7 @@ class Trial(object):
         in a grid
         :return:
         """
-        elements_per_side = int(math.sqrt(len(self.options)) + 0.5)
+        elements_per_side = int(math.ceil(math.sqrt(len(self.options))))
 
         grid_w = self.size[0] / elements_per_side
         grid_h = self.size[1] / elements_per_side

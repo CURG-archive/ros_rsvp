@@ -61,7 +61,6 @@ class RSVPDisplay(object):
             pygame.display.flip()
 
             scaled_imgs = [ImageConverter.from_ros(img) for img in msg.compressed_imgs]
-            scaled_imgs = [pygame.transform.scale(img, self.size) for img in scaled_imgs]
 
             self.trial = Trial(zip(msg.option_ids, scaled_imgs), size=self.size, preview_time=5000,
                                image_time=self.PRESENTATION_DELAY)
