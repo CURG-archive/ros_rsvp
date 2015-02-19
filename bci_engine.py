@@ -2,9 +2,11 @@ from __future__ import print_function
 __author__ = 'rbtying'
 
 import parallel  # parallel port interface
-from socket import socket
+from socket import socket, AF_INET, SOCK_STREAM
 import time
 import random
+import logging
+LOG = logging.getLogger('raw_bci')
 
 
 class BCIEngine(object):
@@ -47,7 +49,7 @@ class BCIEngine(object):
     def __init__(self, hostname='127.0.0.1', port=4444, blocksize=4096):
         self.port = parallel.Parallel()
         self.port.setData(self.RESET_PORT)
-        self.sock = socket()
+        self.sock = socket(AF_INET, SOCK_STREAM)
         self.sock.connect((hostname, port))
         self.blocksize = blocksize
 
@@ -124,12 +126,15 @@ class BCIEngine(object):
         self.mode = 'Train'
 
     def start_testing_session(self, classifier_name):
-        self._send_command(self.TEST_MODE_START)
-        self.sock.send(classifier_name + '\n')
-        resp = self.sock.recv(self.blocksize)
-        if not 'OK' in resp:
-            raise RuntimeError('Could not start test mode: {}'.format(resp))
-        self.mode = 'Test'
+        try:
+            self._send_command(self.TEST_MODE_START)
+            self.sock.send(classifier_name + '\n')
+            resp = self.sock.recv(self.blocksize)
+            if not 'OK' in resp:
+                raise RuntimeError('Could not start test mode: {}'.format(resp))
+            self.mode = 'Test'
+        except socket.error:
+            self.start_testing_session(classifier_name)
 
     def end_session(self):
         self._send_command(self.DO_END_SESSION)
@@ -227,3 +232,8 @@ class BlockResult(object):
 
     def __unicode__(self):
         return self.__str__()
+
+if __name__ == '__main__':
+    b = BCIEngine()
+    time.sleep(3)
+    b.end_session()

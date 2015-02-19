@@ -7,13 +7,17 @@ from rsvp_msgs.msg import RankAction, RankResult
 from image_converter import ImageConverter
 from bci_engine import BCIEngine
 from trial import Trial
+import os
 
 # ROS
 import actionlib
-
+import logging
+import pickle
+logger = logging.getLogger('trial')
+csvlogger = logging.getLogger('csv')
 
 class RSVPDisplay(object):
-    PRESENTATION_FREQUENCY = 4
+    PRESENTATION_FREQUENCY = 5
     PRESENTATION_DELAY = int(1000.0 / PRESENTATION_FREQUENCY + 0.5)
     FRAMERATE = 60
 
@@ -43,6 +47,16 @@ class RSVPDisplay(object):
 
         self.reset()
 
+    def start_trial(self, trial):
+        self.trial = trial
+        self.ranking = True
+
+        self.bci and self.bci.begin_block()
+
+        pygame.time.set_timer(self.EVENT_ID, self.trial.show_next_image(self.screen, self.bci))
+        logger.info('starting trial')
+        pygame.display.flip()
+
     def rank_image_cb(self, msg):
         print(
             'Received message with {} compressed_imgs, {} imgs, {} strs'.format(len(msg.compressed_imgs), len(msg.imgs),
@@ -62,15 +76,8 @@ class RSVPDisplay(object):
 
             scaled_imgs = [ImageConverter.from_ros(img) for img in msg.compressed_imgs]
 
-            self.trial = Trial(zip(msg.option_ids, scaled_imgs), size=self.size, preview_time=5000,
-                               image_time=self.PRESENTATION_DELAY)
-
-            self.ranking = True
-
-            self.bci and self.bci.begin_block()
-
-            pygame.time.set_timer(self.EVENT_ID, self.trial.show_next_image(self.screen, self.bci))
-            pygame.display.flip()
+            self.start_trial(Trial(zip(msg.option_ids, scaled_imgs), size=self.size, preview_time=4000,
+                               image_time=self.PRESENTATION_DELAY))
 
             while self.ranking:
                 pygame.time.wait(100)
@@ -89,6 +96,71 @@ class RSVPDisplay(object):
         reset_str = 'BCI Reset' if self.bci else 'SIMULATION MODE'
         self.screen.blit(self.font.render(reset_str, 1, (255, 255, 255)), (10, 10))
         pygame.display.flip()
+
+    def do_experiment(self, targets, nontargets, slug):
+        t = Trial(list(enumerate(targets + nontargets)),
+                  size=self.size,
+                  preview_time=4000,
+                  image_time=self.PRESENTATION_DELAY)
+        self.start_trial(t)
+        accumulated_raw_results = []
+
+        while self.running:
+            self.clock.tick(self.FRAMERATE)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.reset()
+                    return
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.reset()
+                        return
+                    elif event.key == pygame.K_SPACE:
+                        self.reset()
+                        t = Trial(list(enumerate(targets + nontargets)),
+                                  size=self.size,
+                                  preview_time=4000,
+                                  image_time=self.PRESENTATION_DELAY)
+                        self.start_trial(t)
+                elif event.type == self.EVENT_ID:
+                    if self.trial:
+                        pygame.time.set_timer(self.EVENT_ID, self.trial.show_next_image(self.screen, self.bci))
+                        pygame.display.flip()
+
+                        if self.trial.mode == Trial.State.COMPLETED:
+                            self.bci and self.bci.end_block()
+
+                            results = None
+                            try:
+                                print('Trial completed')
+                                logger.info('completed trial')
+                                results = self.trial.process_results(self.screen, self.bci)
+
+                                self.action_server.set_succeeded(results)
+                                pygame.display.flip()
+                            except RuntimeError:
+                                print('Trial insufficient')
+
+                            logger.info('raw results:')
+                            raw_results = sorted(self.trial.option_results, key=lambda x: x.idx)
+                            accumulated_raw_results.append(raw_results)
+                            with open(os.path.join('data/{}.pickle'.format(slug)), 'w') as f:
+                                pickle.dump(accumulated_raw_results, f)
+                            logger.info('\n'.join(map(str, raw_results)))
+                            logger.info('processed results:')
+                            logger.info(results)
+
+                            self.ranking = False
+                            self.trial = None
+
+                            print('press space to run again')
+                        elif self.trial.mode == Trial.State.ABORTED:
+                            print('Trial aborted')
+                            self.action_server.set_aborted()
+                            self.ranking = False
+                            self.trial = None
+                            self.bci and self.bci.end_block()
+                            self.reset()
 
     def do_loop(self):
         while self.running:

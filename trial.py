@@ -36,6 +36,13 @@ class OptionResult(object):
     def stdev_sort_position(self):
         return np.std(self.sort_positions)
 
+    @property
+    def avg_best_two(self):
+        return np.mean(sorted(self.eegs)[:2])
+
+    def __str__(self):
+        return 'id: {} eegs: [{}] positions: [{}]'.format(self.idx, ','.join(map(str, self.eegs)), ','.join(map(str, self.sort_positions)))
+
 
 class Trial(object):
     """
@@ -58,9 +65,9 @@ class Trial(object):
         (229, 218, 57), (43, 51, 38), (16, 64, 29), (35, 140, 133), (38, 48, 77), (157, 61, 242), (115, 0, 92),
         (51, 0, 20)
     ]
-    BG_COLORS = [(0,0,0) for i in range(20)]
+    BG_COLORS = [(50,50,50) for i in range(36)]
 
-    def __init__(self, options, size=(640, 480), preview_time=1000.0, image_time=100, min_repeat=2, max_repeat=5):
+    def __init__(self, options, size=(640, 480), preview_time=1000.0, image_time=100, min_repeat=3, max_repeat=7):
         """
         Creates a trial
         :param options: [(id, Surface)...] list of pygame Surfaces to display
@@ -86,6 +93,7 @@ class Trial(object):
         self.index_ptr = 0
         self.selected_index_ptr = None
 
+        random.shuffle(self.BG_COLORS)
         self.results = None
 
     def reset(self):
@@ -122,8 +130,9 @@ class Trial(object):
             else:
                 bci and bci.mark_unlabeled()
                 im_idx = self.index_list[self.index_ptr]
-                screen.fill(self.BG_COLORS[im_idx])
+                screen.fill(self.BG_COLORS[im_idx % len(self.BG_COLORS)])
                 screen.blit(self.options[im_idx][1], (0, 0))
+                screen.blit(self.font.render(str(self.options[im_idx][0]), 1, (255, 255, 255)), (20, 20))
                 return self.image_time
         else:
             return 0
@@ -142,6 +151,7 @@ class Trial(object):
 
         eegs = []
         option_results = [OptionResult(opt[0], self.option_counts[idx]) for idx, opt in enumerate(self.options)]
+        self.option_results = option_results
 
         for result in self.results:
             option_idx = self.index_list[result.image_id - 1]
@@ -149,7 +159,7 @@ class Trial(object):
             option_results[option_idx].sort_positions.append(result.sort_position)
             eegs.append(result.eeg)
 
-        option_results = sorted(option_results, key=lambda x: -x.average_eeg)
+        option_results = sorted(option_results, key=lambda x: -x.avg_best_two)
 
         overall_eeg_med = np.median(eegs)
         overall_eeg_std = np.std(eegs)
@@ -189,7 +199,7 @@ class Trial(object):
                 break
 
         if im_idx >= 0:
-            screen.fill(self.BG_COLORS[im_idx])
+            screen.fill(self.BG_COLORS[im_idx % len(self.BG_COLORS)])
             screen.blit(self.options[im_idx][1], (0, 0))
             screen.blit(self.font.render(
                 'Selected option id: {}, conf: {}'.format(result.option_ids[0], result.confidences[0]), 1,
@@ -214,8 +224,9 @@ class Trial(object):
             col = counter % elements_per_side
             rect = pygame.Rect((row * grid_w, col * grid_h), (grid_w, grid_h))
             subsurf = screen.subsurface(rect)
-            subsurf.fill(self.BG_COLORS[idx])
+            subsurf.fill(self.BG_COLORS[idx % len(self.BG_COLORS)])
             subsurf.blit(pygame.transform.smoothscale(self.options[idx][1], (grid_w, grid_h)), (0, 0))
+            subsurf.blit(self.font.render(str(self.options[idx][0]), 1, (255, 255, 255)), (20, 20))
             counter += 1
 
     def _construct_trial(self):
@@ -226,6 +237,7 @@ class Trial(object):
         """
         option_counts = [random.randrange(self.min_repeat, self.max_repeat) for _ in self.options]
         index_list = list(self._nonadjacent(option_counts))
+        random.shuffle(index_list)
 
         return index_list, option_counts
 
