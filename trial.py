@@ -7,7 +7,15 @@ import heapq
 import math
 import numpy as np
 from bci_engine import BlockResult
-from rsvp_msgs.msg import RankResult
+from collections import defaultdict
+try:
+    from rsvp_msgs.msg import RankResult
+except ImportError:
+    pass
+
+def linreg(x, y):
+    A = np.array([x, np.ones(len(y))])
+    return np.linalg.lstsq(A.T, y)
 
 
 class OptionResult(object):
@@ -137,6 +145,52 @@ class Trial(object):
         else:
             return 0
 
+    @staticmethod
+    def find_best_result(option_results, eegs):
+        option_lut = {opt.idx : opt for opt in option_results}
+        sorted_eegs = np.array(sorted(eegs))
+
+        average = np.mean(eegs)
+        std = np.std(eegs)
+        middle_range = [e for e in sorted_eegs
+                        if e > average - 1.5 * std and e < average + 1.5 * std]
+        xi = np.arange(0, len(middle_range))
+        (m, b), resid, k, s = linreg(xi, middle_range)
+
+        x = np.arange(0, len(sorted_eegs))
+        line = m * x + b
+
+        slack = np.std(line - sorted_eegs)
+
+        good_values = []
+        for (v, l) in zip(sorted_eegs, line):
+            if v <= l + 0.05 * slack:
+                good_values.append(v)
+            else:
+                break
+
+        if len(good_values) > 0.8 * len(sorted_eegs):
+            return None
+        else:
+            threshold = len(good_values) + 1
+            counts = defaultdict(int)
+            for opt in dataset:
+                for (i, v) in enumerate(opt.sort_positions):
+                    if v <= threshold:
+                        counts[opt.idx] += 1
+            sorted_values = sorted(counts.iteritems(),
+                                   key=lambda x: (-x[1], -option_lut[x[0]].average_eeg))
+
+            optids = list(option_lut.keys())
+
+            results = []
+            for (_, i) in sorted_values:
+                results.append(option_lut[i])
+                optids.remove(i)
+
+            results += list(sorted(optids, key=lambda x : -option_lut[i].average_eeg))
+            return results
+
     def process_results(self, screen, bci):
         """
         Processes the results of the last block, and shows the selected image on screen
@@ -159,53 +213,34 @@ class Trial(object):
             option_results[option_idx].sort_positions.append(result.sort_position)
             eegs.append(result.eeg)
 
-        option_results = sorted(option_results, key=lambda x: -x.avg_best_two)
+        best_results = Trial.find_best_result(option_results, eegs)
+        best_result = best_results[0]
 
-        overall_eeg_med = np.median(eegs)
-        overall_eeg_std = np.std(eegs)
+        if best_result:
+            # display best option
+            im_idx = -1
+            for (idx, opt) in enumerate(self.options):
+                if opt[0] == best_result.idx:
+                    im_idx = idx
+                    break
 
-        def z(v):
-            return (overall_eeg_med - v) / overall_eeg_std
+            if im_idx >= 0:
+                screen.fill(self.BG_COLORS[im_idx % len(self.BG_COLORS)])
+                screen.blit(self.options[im_idx][1], (0, 0))
+                screen.blit(self.font.render(
+                    'Selected option id: {}, conf: {}'.format(result.option_ids[0], result.confidences[0]), 1,
+                    (255, 255, 255)), (40, self.size[1] / 8))
 
-        def percentage_correct(r):
-            num_correct = sum(1 if abs(z(eeg)) > 0.5 else 0 for eeg in r.eegs)
-            return num_correct * 1.0 / r.expected_counts
-
-        result = RankResult()
-        result.option_ids = [res.idx for res in option_results]
-        result.confidences = [z(res.average_eeg) * percentage_correct(res) for res in option_results]
-
-        best_option = result.confidences[0]
-        avg_of_other_options = np.mean(result.confidences[1:])
-        std_of_other_options = np.std(result.confidences[1:])
-
-        # print([res.average_eeg for res in option_results])
-        # print(result.confidences)
-        # print(('Best option', best_option))
-        # print(('avg, std', avg_of_other_options, std_of_other_options))
-
-        print(result, best_option, avg_of_other_options, std_of_other_options,
-              abs(best_option - avg_of_other_options) / std_of_other_options,
-              abs(std_of_other_options / overall_eeg_std))
-
-        if (abs(best_option - avg_of_other_options) / std_of_other_options) < 2: #  or abs(std_of_other_options / overall_eeg_std) > 0.9:
-            raise RuntimeError('not a good result')
-
-        # display best option
-        im_idx = -1
-        for (idx, opt) in enumerate(self.options):
-            if opt[0] == result.option_ids[0]:
-                im_idx = idx
-                break
-
-        if im_idx >= 0:
-            screen.fill(self.BG_COLORS[im_idx % len(self.BG_COLORS)])
-            screen.blit(self.options[im_idx][1], (0, 0))
+            rr = RankResult()
+            rr.confidences = [r.average_eeg for r in best_results]
+            rr.option_ids = [r.idx for r in best_results]
+            return result
+        else:
+            screen.fill((0, 0, 0))
             screen.blit(self.font.render(
-                'Selected option id: {}, conf: {}'.format(result.option_ids[0], result.confidences[0]), 1,
+                'Could not determine choice, retrying', 1,
                 (255, 255, 255)), (40, self.size[1] / 8))
-
-        return result
+            return None
 
     def _display_preview_image(self, screen):
         """

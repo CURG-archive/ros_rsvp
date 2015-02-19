@@ -131,15 +131,15 @@ class RSVPDisplay(object):
                             self.bci and self.bci.end_block()
 
                             results = None
-                            try:
-                                print('Trial completed')
-                                logger.info('completed trial')
-                                results = self.trial.process_results(self.screen, self.bci)
+                            print('Trial completed')
+                            logger.info('completed trial')
+                            results = self.trial.process_results(self.screen, self.bci)
 
+                            if results:
                                 self.action_server.set_succeeded(results)
-                                pygame.display.flip()
-                            except RuntimeError:
+                            else:
                                 print('Trial insufficient')
+                            pygame.display.flip()
 
                             logger.info('raw results:')
                             raw_results = sorted(self.trial.option_results, key=lambda x: x.idx)
@@ -181,19 +181,18 @@ class RSVPDisplay(object):
                         if self.trial.mode == Trial.State.COMPLETED:
                             self.bci and self.bci.end_block()
 
-                            try:
-                                print('Trial completed')
-                                results = self.trial.process_results(self.screen, self.bci)
+                            print('Trial completed')
+                            results = self.trial.process_results(self.screen, self.bci)
+                            if results:
                                 print('Results of trial: {}'.format(results))
                                 self.action_server.set_succeeded(results)
-                                pygame.display.flip()
                                 self.trial = None
                                 self.ranking = False
-                            except RuntimeError:
+                            else:
                                 print('Trial insufficient, rescheduling')
                                 self.bci and self.bci.begin_block()
                                 pygame.time.set_timer(self.EVENT_ID, self.trial.reset())
-                                pygame.display.flip()
+                            pygame.display.flip()
                         elif self.trial.mode == Trial.State.ABORTED:
                             print('Trial aborted')
                             self.action_server.set_aborted()
