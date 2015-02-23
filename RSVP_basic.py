@@ -17,6 +17,10 @@ import argparse
 from bci_engine import BCIEngine
 from rsvp_display import RSVPDisplay
 import logging
+import datetime
+
+
+
 
 
 def main_function():
@@ -34,8 +38,17 @@ def main_function():
 
     args = parser.parse_args(sys.argv[1:])
 
-    logger = logging.getLogger('ros_rsvp')
+
+    SLUG = 'bci_{}_log_{}'.format('inactive' if args.simulate_bci else 'active', datetime.datetime.now().strftime('%b_%d_%H_%M_%S'))
+
+    logger = logging.getLogger('trial')
     logger.setLevel(logging.DEBUG)
+    handler = logging.FileHandler('logs/{}.log'.format(SLUG))
+    handler.setLevel(logging.DEBUG)
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    logger.addHandler(sh)
 
     for var in ('ROS_MASTER_URI', 'ROS_HOSTNAME', 'ROS_PACKAGE_PATH'):
         if not var in os.environ:
@@ -69,7 +82,7 @@ def main_function():
         logger.info('session started!')
 
     try:
-        r.do_loop()
+        r.do_loop(SLUG)
     finally:
         print 'ending session'
         logger.info('ending session')

@@ -164,17 +164,18 @@ class Trial(object):
 
         good_values = []
         for (v, l) in zip(sorted_eegs, line):
-            if v <= l + 0.05 * slack:
+            if v <= l:
                 good_values.append(v)
             else:
                 break
 
         if len(good_values) > 0.8 * len(sorted_eegs):
-            return None
+            print(len(good_values))
+            return [None]
         else:
             threshold = len(good_values) + 1
             counts = defaultdict(int)
-            for opt in dataset:
+            for opt in option_results:
                 for (i, v) in enumerate(opt.sort_positions):
                     if v <= threshold:
                         counts[opt.idx] += 1
@@ -184,11 +185,11 @@ class Trial(object):
             optids = list(option_lut.keys())
 
             results = []
-            for (_, i) in sorted_values:
+            for (i, _) in sorted_values:
                 results.append(option_lut[i])
                 optids.remove(i)
 
-            results += list(sorted(optids, key=lambda x : -option_lut[i].average_eeg))
+            results += [option_lut[i] for i in sorted(optids, key=lambda x: -option_lut[i].average_eeg)]
             return results
 
     def process_results(self, screen, bci):
@@ -228,13 +229,14 @@ class Trial(object):
                 screen.fill(self.BG_COLORS[im_idx % len(self.BG_COLORS)])
                 screen.blit(self.options[im_idx][1], (0, 0))
                 screen.blit(self.font.render(
-                    'Selected option id: {}, conf: {}'.format(result.option_ids[0], result.confidences[0]), 1,
+                    'Selected option id: {}, conf: {}'.format(best_result.idx, best_result.average_eeg), 1,
                     (255, 255, 255)), (40, self.size[1] / 8))
 
             rr = RankResult()
             rr.confidences = [r.average_eeg for r in best_results]
             rr.option_ids = [r.idx for r in best_results]
-            return result
+
+            return rr
         else:
             screen.fill((0, 0, 0))
             screen.blit(self.font.render(

@@ -210,7 +210,7 @@ class BlockResult(object):
         if random.random() > 0.5:
             print('Generating random blocks with known success')
             for i in range(rand_opt[0][1]):
-                eegs[-i-1] = 1.0e-6
+                eegs[-i-1] = -1.0e-6
         else:
             print('Generating random blocks without known success')
 

@@ -13,8 +13,10 @@ import os
 import actionlib
 import logging
 import pickle
+import datetime
+
 logger = logging.getLogger('trial')
-csvlogger = logging.getLogger('csv')
+
 
 class RSVPDisplay(object):
     PRESENTATION_FREQUENCY = 5
@@ -44,7 +46,6 @@ class RSVPDisplay(object):
         self.action_server.start()
 
         self.trial = None
-
         self.reset()
 
     def start_trial(self, trial):
@@ -58,7 +59,7 @@ class RSVPDisplay(object):
         pygame.display.flip()
 
     def rank_image_cb(self, msg):
-        print(
+        logger.info(
             'Received message with {} compressed_imgs, {} imgs, {} strs'.format(len(msg.compressed_imgs), len(msg.imgs),
                                                                                 len(msg.strs)))
         if self.trial and not self.trial.mode in (Trial.State.ABORTED, Trial.State.COMPLETED):
@@ -144,7 +145,7 @@ class RSVPDisplay(object):
                             logger.info('raw results:')
                             raw_results = sorted(self.trial.option_results, key=lambda x: x.idx)
                             accumulated_raw_results.append(raw_results)
-                            with open(os.path.join('data/{}.pickle'.format(slug)), 'w') as f:
+                            with open('data/{}.pickle'.format(slug), 'w') as f:
                                 pickle.dump(accumulated_raw_results, f)
                             logger.info('\n'.join(map(str, raw_results)))
                             logger.info('processed results:')
@@ -162,7 +163,8 @@ class RSVPDisplay(object):
                             self.bci and self.bci.end_block()
                             self.reset()
 
-    def do_loop(self):
+    def do_loop(self, slug):
+        accumulated_raw_results = []
         while self.running:
             self.clock.tick(self.FRAMERATE)
             for event in pygame.event.get():
@@ -181,10 +183,19 @@ class RSVPDisplay(object):
                         if self.trial.mode == Trial.State.COMPLETED:
                             self.bci and self.bci.end_block()
 
-                            print('Trial completed')
+                            logger.info('Trial completed')
                             results = self.trial.process_results(self.screen, self.bci)
+
+                            logger.info('raw results:')
+                            raw_results = sorted(self.trial.option_results, key=lambda x: x.idx)
+                            accumulated_raw_results.append(raw_results)
+                            with open('data/{}.pickle'.format(slug), 'w') as f:
+                                pickle.dump(accumulated_raw_results, f)
+                            logger.info('\n'.join(map(str, raw_results)))
+                            logger.info('processed results:')
+
                             if results:
-                                print('Results of trial: {}'.format(results))
+                                logger.info('Results of trial {}'.format(results))
                                 self.action_server.set_succeeded(results)
                                 self.trial = None
                                 self.ranking = False
